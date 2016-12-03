@@ -8,7 +8,7 @@ FILE_NAME = "./data/new_naive_data.dump"
 def get_data():
     data = pickle.load(open(FILE_NAME, 'r'))
     vectors = np.array([entry[0] for entry in data])
-    labels = np.array([(1, 0) if int(entry[1]) == 1 else (0, 1) for entry in data])
+    labels = np.array([(0, 1) if int(entry[1]) == 1 else (1, 0) for entry in data])
     vectors, labels = _shuffle_in_unison(vectors, labels)
     no_of_entries = len(vectors)
 
@@ -16,7 +16,7 @@ def get_data():
     training_vectors = vectors[0: division_point, :]
     training_labels = labels[0: division_point, :]
     test_vectors = vectors[division_point + 1:, :]
-    test_labels = vectors[division_point + 1:, :]
+    test_labels = labels[division_point + 1:, :]
     return dict(train=training_vectors, train_labels=training_labels, test=test_vectors, test_labels=test_labels)
 
 
@@ -34,28 +34,46 @@ def _shuffle_in_unison(a, b):
 def run_classifier(dataset):
     # Create model
     input_layer = tflearn.input_data(shape=[None, 200])
-    dense_1 = tflearn.fully_connected(input_layer, 128, activation='relu')
-    # dense_2 = tflearn.fully_connected(dense_1, 16, activation='relu')
-    softmax = tflearn.fully_connected(dense_1, 2, activation='softmax')
+    dense_1 = tflearn.fully_connected(input_layer, 64, activation='relu')
+    dense_2 = tflearn.fully_connected(dense_1, 64, activation='linear')
+    # dense_3 = tflearn.fully_connected(dense_2, 8, activation='relu')
+    softmax = tflearn.fully_connected(dense_2, 2, activation='softmax')
 
     # Regression
-    sgd = tflearn.SGD(learning_rate=0.1, lr_decay=0.1, decay_step=10000)
-    top_k = tflearn.metrics.Top_k(5)
+    sgd = tflearn.SGD(learning_rate=0.1, lr_decay=0.9, decay_step=1000)
+    top_k = tflearn.metrics.Top_k(2)
     net = tflearn.regression(softmax, optimizer=sgd, metric=top_k, loss='categorical_crossentropy')
 
     # Training
     model = tflearn.DNN(net, tensorboard_verbose=0, session=None)
-    model.fit(dataset["train"], dataset["train_labels"], n_epoch=30, show_metric=True,
+    model.fit(dataset["train"], dataset["train_labels"], n_epoch=170, show_metric=True,
               run_id="fold_training")
 
     # Test model performance
     match_count = 0.0
+    zero_count = 0.0
+    zero_match = 0.0
+    one_count = 0.0
+    one_match = 0.0
+    
     predictions = model.predict(dataset["test"])
+    
     for index in xrange(0, len(predictions)):
+        is_zero = True if np.all(np.equal(dataset["test_labels"][index], np.array((0, 1)))) else False
+        if is_zero:
+            zero_count += 1
+        else:
+            one_count += 1
         if compare(predictions[index], dataset["test_labels"][index]):
             match_count += 1
+            if is_zero:
+                zero_match += 1
+            else:
+                one_match += 1
 
-    print ("Accuracy on Fresh Data is : {}".format(str(match_count / len(predictions))))
+    print ("Accuracy on Fresh Data is : {} %".format(str(100.0 * match_count / len(predictions))))
+    print ("Total Zeros (0,1) : {} \tAccuracy : {} %".format(str(zero_count), str(100.0 * zero_match / zero_count)))
+    print ("Total Ones (1,0) : {} \tAccuracy : {} %".format(str(one_count), str(100.00 * one_match / one_count)))
 
 
 def compare(prediction_vector, label_vector):
