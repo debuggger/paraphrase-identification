@@ -9,7 +9,7 @@ def get_data():
     data = pickle.load(open(FILE_NAME, 'r'))
     vectors = np.array([entry[0] for entry in data])
     labels = np.array([(1, 0) if int(entry[1]) == 1 else (0, 1) for entry in data])
-    # vectors, labels = _shuffle_in_unison(vectors, labels)
+    vectors, labels = _shuffle_in_unison(vectors, labels)
     no_of_entries = len(vectors)
 
     division_point = int(0.9 * no_of_entries)
@@ -35,8 +35,8 @@ def run_classifier(dataset):
     # Create model
     input_layer = tflearn.input_data(shape=[None, 200])
     dense_1 = tflearn.fully_connected(input_layer, 128, activation='relu')
-    dense_2 = tflearn.fully_connected(dense_1, 16, activation='relu')
-    softmax = tflearn.fully_connected(dense_2, 2, activation='softmax')
+    # dense_2 = tflearn.fully_connected(dense_1, 16, activation='relu')
+    softmax = tflearn.fully_connected(dense_1, 2, activation='softmax')
 
     # Regression
     sgd = tflearn.SGD(learning_rate=0.1, lr_decay=0.1, decay_step=10000)
