@@ -34,19 +34,19 @@ def _shuffle_in_unison(a, b):
 def run_classifier(dataset):
     # Create model
     input_layer = tflearn.input_data(shape=[None, 200])
-    dense_1 = tflearn.fully_connected(input_layer, 64, activation='relu')
-    dense_2 = tflearn.fully_connected(dense_1, 64, activation='linear')
-    # dense_3 = tflearn.fully_connected(dense_2, 8, activation='relu')
+    dense_1 = tflearn.fully_connected(input_layer, 128, activation='relu')
+    dense_2 = tflearn.fully_connected(dense_1, 16, activation='linear')
+    # dense_3 = tflearn.fully_connected(dense_2, 4, activation='relu')
     softmax = tflearn.fully_connected(dense_2, 2, activation='softmax')
 
     # Regression
-    sgd = tflearn.SGD(learning_rate=0.1, lr_decay=0.9, decay_step=1000)
+    sgd = tflearn.SGD(learning_rate=0.1, lr_decay=0.9, decay_step=100)
     top_k = tflearn.metrics.Top_k(2)
     net = tflearn.regression(softmax, optimizer=sgd, metric=top_k, loss='categorical_crossentropy')
 
     # Training
     model = tflearn.DNN(net, tensorboard_verbose=0, session=None)
-    model.fit(dataset["train"], dataset["train_labels"], n_epoch=170, show_metric=True,
+    model.fit(dataset["train"], dataset["train_labels"], n_epoch=30, show_metric=True,
               run_id="fold_training")
 
     # Test model performance
@@ -72,8 +72,11 @@ def run_classifier(dataset):
                 one_match += 1
 
     print ("Accuracy on Fresh Data is : {} %".format(str(100.0 * match_count / len(predictions))))
-    print ("Total Zeros (0,1) : {} \tAccuracy : {} %".format(str(zero_count), str(100.0 * zero_match / zero_count)))
-    print ("Total Ones (1,0) : {} \tAccuracy : {} %".format(str(one_count), str(100.00 * one_match / one_count)))
+    print ("Accuracy on Zeros is : {} %".format(str(100 * zero_match / zero_count)))
+    print ("Accuracy on Ones is : {} %".format(str(100 * one_match / one_count)))
+
+    # print ("Total Zeros (0,1) : {} \tAccuracy : {} %".format(str(zero_count), str(100.0 * zero_match / zero_count)))
+    # print ("Total Ones (1,0) : {} \tAccuracy : {} %".format(str(one_count), str(100.00 * one_match / one_count)))
 
 
 def compare(prediction_vector, label_vector):

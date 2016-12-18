@@ -17,7 +17,7 @@ from my_data_helper import *
 tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
 tf.flags.DEFINE_string("train_data_file", "../data/msr_paraphrase_train.txt", "Data source for the positive data.")
 tf.flags.DEFINE_string("test_data_file", "../data/msr_paraphrase_test.txt", "Data source for the positive data.")
-tf.flags.DEFINE_string("checkpoint_file", "/mnt/glove.py/cnn-text-classification-tf/runs/1480803602/checkpoints/model-lm-500")
+tf.flags.DEFINE_string("checkpoint_file", "/mnt/glove.py/cnn-text-classification-tf/runs/1480803602/checkpoints/model-lm-500", "Path to checkpoint file")
 
 # Model Hyperparameters
 tf.flags.DEFINE_integer("embedding_dim", 128, "Dimensionality of character embedding (default: 128)")
@@ -90,6 +90,7 @@ with tf.Graph().as_default():
             filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
             num_filters=FLAGS.num_filters,
             checkpoint_file=FLAGS.checkpoint_file,
+            session=sess,
             l2_reg_lambda=FLAGS.l2_reg_lambda) 
 
         # Define Training procedure

@@ -6,7 +6,7 @@ import os
 import time
 import datetime
 import data_helpers
-from text_cnn_test import TextCNNTest
+from text_cnn_deep_test import TextCNNDeep
 from tensorflow.contrib import learn
 from my_data_helper import *
 from convert_glove_to_wv import *
@@ -17,14 +17,14 @@ from convert_glove_to_wv import *
 tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
 tf.flags.DEFINE_string("train_data_file", "../data/combined_train.txt", "Data source for the positive data.")
 tf.flags.DEFINE_string("test_data_file", "../data/combined_test.txt", "Data source for the positive data.")
-tf.flags.DEFINE_string("vocab_file", "../wv_combined.pik", "Glove word to vector mapping")
+tf.flags.DEFINE_string("vocab_file", "../wv_combined_100.pik", "Glove word to vector mapping")
 tf.flags.DEFINE_string("glove_vocab_file", "../data/glove.6B.200d.txt", "Data source for the positive data.")
-tf.flags.DEFINE_string("checkpoint_file", "/mnt/glove.py/cnn-text-classification-tf/runs/1481517152/checkpoints/model-400", "Data source for the positive data.")
+tf.flags.DEFINE_string("checkpoint_file", "runs/1481136972/checkpoints/model-7400", "Data source for the positive data.")
 
 # Model Hyperparameters
-tf.flags.DEFINE_integer("embedding_dim", 100, "Dimensionality of character embedding (default: 128)")
-tf.flags.DEFINE_string("filter_sizes", "3,5,7", "Comma-separated filter sizes (default: '3,4,5')")
-tf.flags.DEFINE_integer("num_filters", 150, "Number of filters per filter size (default: 128)")
+tf.flags.DEFINE_integer("embedding_dim", 128, "Dimensionality of character embedding (default: 128)")
+tf.flags.DEFINE_string("filter_sizes", "3,4,5", "Comma-separated filter sizes (default: '3,4,5')")
+tf.flags.DEFINE_integer("num_filters", 2, "Number of filters per filter size (default: 128)")
 tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (default: 0.5)")
 tf.flags.DEFINE_float("l2_reg_lambda", 0.1, "L2 regularizaion lambda (default: 0.0)")
 
@@ -85,13 +85,14 @@ with tf.Graph().as_default():
     #vocab = process_glove_file(FLAGS.glove_vocab_file)
     maxSentLen = getMaxSentLen(FLAGS.train_data_file)
     with sess.as_default():
-        cnn = TextCNNTest(
+        cnn = TextCNNDeep(
             sequence_length=maxSentLen,
             num_classes=2,
             vocab_size=len(vocab),
             embedding_size=np.shape(vocab[vocab.keys()[0]])[0],
             filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
-            num_filters=FLAGS.num_filters,
+            num_filters_1=FLAGS.num_filters,
+            num_filters_2=FLAGS.num_filters*2,
             checkpoint_file=FLAGS.checkpoint_file,
             session=sess,
             l2_reg_lambda=FLAGS.l2_reg_lambda)
@@ -189,8 +190,18 @@ with tf.Graph().as_default():
 
         # Generate batches
         dev_index = 1
-        x1_dev, x2_dev, y_dev  = getNextDevBatch(FLAGS.test_data_file, vocab, dev_index, -1, maxSentLen)
+        x1_dev, x2_dev, y_dev  = getNextDevBatch(FLAGS.test_data_file, vocab, dev_index, FLAGS.batch_size*2, maxSentLen)
        
-        acc = dev_step(x1_dev, x2_dev, y_dev, writer=dev_summary_writer)
-        print acc       
+        # Training loop. For each batch...
+        acc_list = []
+        while len(x1_dev) > 0:
+            acc = dev_step(x1_dev, x2_dev, y_dev, writer=dev_summary_writer)
+            acc_list.append(acc)
+            x1_dev, x2_dev, y_dev  = getNextDevBatch(FLAGS.test_data_file, vocab, dev_index, FLAGS.batch_size*2, maxSentLen)
+            dev_index += 2*FLAGS.batch_size
+        
+        dev_index = 1
+        x1_dev, x2_dev, y_dev  = getNextDevBatch(FLAGS.test_data_file, vocab, dev_index, FLAGS.batch_size*2, maxSentLen)
+        print sum(acc_list)/len(acc_list)
+               
 

@@ -6,7 +6,7 @@ import os
 import time
 import datetime
 import data_helpers
-from text_cnn_test import TextCNNTest
+from text_cnn_deep import TextCNNDeep
 from tensorflow.contrib import learn
 from my_data_helper import *
 from convert_glove_to_wv import *
@@ -17,21 +17,20 @@ from convert_glove_to_wv import *
 tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
 tf.flags.DEFINE_string("train_data_file", "../data/combined_train.txt", "Data source for the positive data.")
 tf.flags.DEFINE_string("test_data_file", "../data/combined_test.txt", "Data source for the positive data.")
-tf.flags.DEFINE_string("vocab_file", "../wv_combined.pik", "Glove word to vector mapping")
+tf.flags.DEFINE_string("vocab_file", "../wv_combined_100.pik", "Glove word to vector mapping")
 tf.flags.DEFINE_string("glove_vocab_file", "../data/glove.6B.200d.txt", "Data source for the positive data.")
-tf.flags.DEFINE_string("checkpoint_file", "/mnt/glove.py/cnn-text-classification-tf/runs/1481517152/checkpoints/model-400", "Data source for the positive data.")
 
 # Model Hyperparameters
-tf.flags.DEFINE_integer("embedding_dim", 100, "Dimensionality of character embedding (default: 128)")
-tf.flags.DEFINE_string("filter_sizes", "3,5,7", "Comma-separated filter sizes (default: '3,4,5')")
-tf.flags.DEFINE_integer("num_filters", 150, "Number of filters per filter size (default: 128)")
+tf.flags.DEFINE_integer("embedding_dim", 128, "Dimensionality of character embedding (default: 128)")
+tf.flags.DEFINE_string("filter_sizes", "3,4,5", "Comma-separated filter sizes (default: '3,4,5')")
+tf.flags.DEFINE_integer("num_filters", 2, "Number of filters per filter size (default: 128)")
 tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (default: 0.5)")
 tf.flags.DEFINE_float("l2_reg_lambda", 0.1, "L2 regularizaion lambda (default: 0.0)")
 
 # Training parameters
-tf.flags.DEFINE_integer("batch_size", 20, "Batch Size (default: 64)")
-tf.flags.DEFINE_integer("num_epochs", 20, "Number of training epochs (default: 200)")
-tf.flags.DEFINE_integer("evaluate_every", 1000, "Evaluate model on dev set after this many steps (default: 100)")
+tf.flags.DEFINE_integer("batch_size", 40, "Batch Size (default: 64)")
+tf.flags.DEFINE_integer("num_epochs", 3, "Number of training epochs (default: 200)")
+tf.flags.DEFINE_integer("evaluate_every", 200, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
 # Misc Parameters
 tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow device soft device placement")
@@ -85,19 +84,18 @@ with tf.Graph().as_default():
     #vocab = process_glove_file(FLAGS.glove_vocab_file)
     maxSentLen = getMaxSentLen(FLAGS.train_data_file)
     with sess.as_default():
-        cnn = TextCNNTest(
+        cnn = TextCNNDeep(
             sequence_length=maxSentLen,
             num_classes=2,
             vocab_size=len(vocab),
             embedding_size=np.shape(vocab[vocab.keys()[0]])[0],
             filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
-            num_filters=FLAGS.num_filters,
-            checkpoint_file=FLAGS.checkpoint_file,
-            session=sess,
+            num_filters_1=FLAGS.num_filters,
+            num_filters_2=FLAGS.num_filters*2,
             l2_reg_lambda=FLAGS.l2_reg_lambda)
+
         # Define Training procedure
         global_step = tf.Variable(0, name="global_step", trainable=False)
-        '''
         optimizer = tf.train.AdamOptimizer(1e-3)
         grads_and_vars = optimizer.compute_gradients(cnn.loss)
         train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
@@ -112,21 +110,20 @@ with tf.Graph().as_default():
                 grad_summaries.append(sparsity_summary)
         grad_summaries_merged = tf.merge_summary(grad_summaries)
 
-        '''
         # Output directory for models and summaries
         timestamp = str(int(time.time()))
         out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))
         print("Writing to {}\n".format(out_dir))
+
         # Summaries for loss and accuracy
         loss_summary = tf.scalar_summary("loss", cnn.loss)
         acc_summary = tf.scalar_summary("accuracy", cnn.accuracy)
 
-        '''
         # Train Summaries
         train_summary_op = tf.merge_summary([loss_summary, acc_summary, grad_summaries_merged])
         train_summary_dir = os.path.join(out_dir, "summaries", "train")
         train_summary_writer = tf.train.SummaryWriter(train_summary_dir, sess.graph)
-        '''
+
         # Dev summaries
         dev_summary_op = tf.merge_summary([loss_summary, acc_summary])
         dev_summary_dir = os.path.join(out_dir, "summaries", "dev")
@@ -185,12 +182,41 @@ with tf.Graph().as_default():
             print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
             if writer:
                 writer.add_summary(summaries, step)
-            return accuracy
 
         # Generate batches
         dev_index = 1
-        x1_dev, x2_dev, y_dev  = getNextDevBatch(FLAGS.test_data_file, vocab, dev_index, -1, maxSentLen)
+        x1_dev, x2_dev, y_dev  = getNextDevBatch(FLAGS.test_data_file, vocab, dev_index, FLAGS.batch_size*2, maxSentLen)
        
-        acc = dev_step(x1_dev, x2_dev, y_dev, writer=dev_summary_writer)
-        print acc       
+        # Training loop. For each batch...
+        for epochNumber in range(FLAGS.num_epochs):
+            train_index = 1
+            x1_batch, x2_batch, y_batch = getNextBatch(FLAGS.train_data_file, vocab, train_index, FLAGS.batch_size)
+            #print np.shape(x1_batch)
+ 
+            while len(x1_batch) > 0:
+                train_step(x1_batch, x2_batch, y_batch, epochNumber)
+                current_step = tf.train.global_step(sess, global_step)
+                if current_step % FLAGS.evaluate_every == 0:
+                    print("\nEvaluation:")
+                    while len(x1_dev) > 0:
+                        dev_step(x1_dev, x2_dev, y_dev, writer=dev_summary_writer)
+                        x1_dev, x2_dev, y_dev  = getNextDevBatch(FLAGS.test_data_file, vocab, dev_index, FLAGS.batch_size*2, maxSentLen)
+                        dev_index += 2*FLAGS.batch_size
+                    
+                    dev_index = 1
+                    x1_dev, x2_dev, y_dev  = getNextDevBatch(FLAGS.test_data_file, vocab, dev_index, FLAGS.batch_size*2, maxSentLen)
+                    print("")
+                if current_step % FLAGS.checkpoint_every == 0:
+                    path = saver.save(sess, checkpoint_prefix, global_step=current_step)
+                    print("Saved model checkpoint to {}\n".format(path))
+
+                train_index += FLAGS.batch_size
+                x1_batch, x2_batch, y_batch = getNextBatch(FLAGS.train_data_file, vocab, train_index, FLAGS.batch_size)
+
+        while len(x1_dev) > 0:
+            dev_step(x1_dev, x2_dev, y_dev, writer=dev_summary_writer)
+            x1_dev, x2_dev, y_dev  = getNextDevBatch(FLAGS.test_data_file, vocab, dev_index, FLAGS.batch_size*2, maxSentLen)
+            dev_index += 2*FLAGS.batch_size
+
+                    
 
